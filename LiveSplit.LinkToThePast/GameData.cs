@@ -4,7 +4,6 @@ using LiveSplit.Options;
 using System;
 using System.Diagnostics;
 using System.Linq;
-using System.Windows.Forms;
 
 namespace LiveSplit.LinkToThePast
 {
@@ -13,10 +12,18 @@ namespace LiveSplit.LinkToThePast
         public event EventHandler<StateEventArgs> OnNewGame;
         public event EventHandler<SplitEventArgs> Split;
 
-        public MemoryWatcher<GameModule> Module;
-        public MemoryWatcher<GameState> Progress;
-        public MemoryWatcher<Pendant> Pendants;
-        public MemoryWatcher<Crystal> Crystals;
+        private MemoryWatcher<GameModule> Module;
+        private MemoryWatcher<GameState> Progress;
+        private MemoryWatcher<Pendant> Pendants;
+        private MemoryWatcher<Crystal> Crystals;
+
+        // Randomizer items
+        private MemoryWatcher<Randomizer.InventorySwap> SwappableInventory;
+        private MemoryWatcher<Randomizer.InventorySwap2> SwappableInventory2;
+        private MemoryWatcher<byte> Hammer;
+        private MemoryWatcher<byte> Gloves;
+        private MemoryWatcher<byte> Boots;
+        // End randomizer items
 
         private Process Emulator;
 
@@ -25,7 +32,7 @@ namespace LiveSplit.LinkToThePast
 
         private LiveSplitState currentState;
 
-        public void Update(LiveSplitState state)
+        public void Update(LiveSplitState state, bool randomized)
         {
             currentState = state;
             if (!FindEmulator())
@@ -33,6 +40,9 @@ namespace LiveSplit.LinkToThePast
 
             Progress.Update(Emulator);
             Module.Update(Emulator);
+
+            if (randomized && Module.Current > GameModule.LoadFile)
+                CheckForItems();
 
             // Only check for progress if it changed by one, which is normal story progression.
             // If you load a new game, your progress is 0 (and thus this isn't executed);
@@ -62,7 +72,7 @@ namespace LiveSplit.LinkToThePast
 
                 else if (Module.Old != GameModule.TriforceRoom && Module.Current == GameModule.TriforceRoom)
                     // we're done, time to go home
-                    Split?.Invoke(this, new SplitEventArgs(currentState, "Ganon"));
+                    Split?.Invoke(this, new SplitEventArgs(currentState, ALTTPComponent.TRIFORCE));
             }
         }
 
@@ -119,6 +129,37 @@ namespace LiveSplit.LinkToThePast
             }
         }
 
+        private void CheckForItems()
+        {
+            SwappableInventory.Update(Emulator);
+            if (SwappableInventory.Changed)
+            {
+                // were we just given the fake flute?
+                if ((SwappableInventory.Current & Randomizer.InventorySwap.FakeFlute) == Randomizer.InventorySwap.FakeFlute)
+                    Split?.Invoke(this, new SplitEventArgs(currentState, "Flute", true));
+            }
+
+            SwappableInventory2.Update(Emulator);
+            if (SwappableInventory2.Changed)
+            {
+                // were we just given the bow?
+                if ((SwappableInventory2.Current & Randomizer.InventorySwap2.Bow) == Randomizer.InventorySwap2.Bow)
+                    Split?.Invoke(this, new SplitEventArgs(currentState, "Bow", true));
+            }
+
+            Gloves.Update(Emulator);
+            if (Gloves.Changed && Gloves.Current == 2)
+                Split?.Invoke(this, new SplitEventArgs(currentState, "Titan's Mitt", true));
+
+            Boots.Update(Emulator);
+            if (Boots.Changed && Boots.Current > 0)
+                Split?.Invoke(this, new SplitEventArgs(currentState, "Pegasus Boots", true));
+
+            Hammer.Update(Emulator);
+            if (Hammer.Changed && Hammer.Current > 0)
+                Split?.Invoke(this, new SplitEventArgs(currentState, "Hammer", true));
+        }
+
         /// <summary>
         /// Returns a compatible emulator instance.
         /// </summary>
@@ -129,13 +170,11 @@ namespace LiveSplit.LinkToThePast
             {
                 // try to find snes9x.
                 // the addresses have been tested with snes9x 1.53.
+                int baseAddress = 0;
                 Emulator = Process.GetProcessesByName("snes9x").FirstOrDefault();
                 if (Emulator != null)
                 {
-                    Module = new MemoryWatcher<GameModule>(new DeepPointer(0x2EFBA4, 0x10));
-                    Progress = new MemoryWatcher<GameState>(new DeepPointer(0x2EFBA4, 0xF3C5));
-                    Pendants = new MemoryWatcher<Pendant>(new DeepPointer(0x2EFBA4, 0xF374));
-                    Crystals = new MemoryWatcher<Crystal>(new DeepPointer(0x2EFBA4, 0xF37A));
+                    baseAddress = 0x2EFBA4;
                 }
                 else
                 {
@@ -143,14 +182,25 @@ namespace LiveSplit.LinkToThePast
                     Emulator = Process.GetProcessesByName("snes9x-64").FirstOrDefault();
                     if (Emulator != null)
                     {
-                        Module = new MemoryWatcher<GameModule>(new DeepPointer(0x405EC8, 0x10));
-                        Progress = new MemoryWatcher<GameState>(new DeepPointer(0x405EC8, 0xF3C5));
-                        Pendants = new MemoryWatcher<Pendant>(new DeepPointer(0x405EC8, 0xF374));
-                        Crystals = new MemoryWatcher<Crystal>(new DeepPointer(0x405EC8, 0xF37A));
+                        baseAddress = 0x405EC8;
                     }
                 }
-            }
 
+                if (baseAddress > 0)
+                {
+
+                    Module = new MemoryWatcher<GameModule>(new DeepPointer(baseAddress, 0x10));
+                    Progress = new MemoryWatcher<GameState>(new DeepPointer(baseAddress, 0xF3C5));
+                    Pendants = new MemoryWatcher<Pendant>(new DeepPointer(baseAddress, 0xF374));
+                    Crystals = new MemoryWatcher<Crystal>(new DeepPointer(baseAddress, 0xF37A));
+
+                    SwappableInventory = new MemoryWatcher<Randomizer.InventorySwap>(new DeepPointer(baseAddress, 0xF412));
+                    SwappableInventory2 = new MemoryWatcher<Randomizer.InventorySwap2>(new DeepPointer(baseAddress, 0xF414));
+                    Hammer = new MemoryWatcher<byte>(new DeepPointer(baseAddress, 0xF34B));
+                    Gloves = new MemoryWatcher<byte>(new DeepPointer(baseAddress, 0xF354));
+                    Boots = new MemoryWatcher<byte>(new DeepPointer(baseAddress, 0xF355));
+                }
+            }
             return Emulator != null;
         }
     }
@@ -169,9 +219,16 @@ namespace LiveSplit.LinkToThePast
     {
         public String SplitName { get; protected set; }
 
-        public SplitEventArgs(LiveSplitState state, string SplitName) : base(state)
+        public bool Item { get; protected set; }
+
+        public SplitEventArgs(LiveSplitState state, string splitName) : base(state)
         {
-            this.SplitName = SplitName;
+            this.SplitName = splitName;
+        }
+
+        public SplitEventArgs(LiveSplitState state, string splitName, bool item) : this(state, splitName)
+        {
+            this.Item = item;
         }
     }
 }

@@ -1,22 +1,22 @@
 ﻿using LiveSplit.UI.Components;
 using System;
-using System.Collections.Generic;
 using LiveSplit.Model;
 using LiveSplit.UI;
 using System.Xml;
 using System.Windows.Forms;
 using System.Drawing;
+using LiveSplit.Options;
 
 namespace LiveSplit.LinkToThePast
 {
     public class ALTTPComponent : LogicComponent
     {
-        private const String UNKNOWN = "???";
+        public const String TRIFORCE = "Triforce";
 
         private GameData gameData;
         private TimerModel timer;
 
-        private static SplitIcons icons = new SplitIcons();
+        private SplitIcons icons = new SplitIcons();
 
         public override string ComponentName => "LTTP AutoSplitter";
 
@@ -36,24 +36,42 @@ namespace LiveSplit.LinkToThePast
 
             if (IsRandomized(run))
             {
-                // Hyrule Castle is the default split that is always visible, while Ganon is the last split after no further splits should be added
-                if (e.SplitName == "Hyrule Castle" || e.SplitName == "Ganon")
-                    timer.Split();
-                else {
-                    if (state.CurrentSplit.Name == UNKNOWN)
+                if (e.Item)
+                {
+                    // If this is an item, loading the game would add it again
+                    foreach (ISegment segment in state.Run)
                     {
-                        Image icon = null;
-                        icons.TryGetValue(e.SplitName, out icon);
-
-                        state.CurrentSplit.Name = e.SplitName;
-                        state.CurrentSplit.Icon = icon;
-
-                        // add a new unknown segment
-                        run.AddSegment(UNKNOWN);
+                        if (segment.Name == e.SplitName)
+                        {
+                            Log.Info("Skipping a split on " + e.SplitName);
+                            return;
+                        }
                     }
+                }
+
+                // Ganon is the last split after no further splits should be added
+                if (state.CurrentSplit.Name == TRIFORCE)
+                {
+                    Image icon = null;
+                    icons.TryGetValue(e.SplitName, out icon);
+
+                    state.CurrentSplit.Name = e.SplitName;
+                    state.CurrentSplit.Icon = icon;
+
+                    if (e.SplitName != TRIFORCE)
+                    {
+                        // add a new unknown segment
+                        run.AddSegment(TRIFORCE, icon: icons[TRIFORCE]);
+                    }
+
                     timer.Split();
                 }
-            } else
+                else
+                {
+                    Log.Warning("Currently at split " + state.CurrentSplit.Name + " while trying to split " + e.SplitName);
+                }
+            }
+            else if (!e.Item)
                 // split without fancy extra
                 timer.Split();
         }
@@ -67,26 +85,12 @@ namespace LiveSplit.LinkToThePast
         {
             if (IsRandomized(e.State.Run))
             {
-                SetupRandomizer(e.State.Run);
+                e.State.Run.Clear();
+                e.State.Run.AddSegment(TRIFORCE, icon: icons[TRIFORCE]);
             }
 
             timer.Reset();
             timer.Start();
-        }
-
-        /// <summary>
-        /// Always start with Hyrule Castle Escape
-        /// </summary>
-        /// <param name="run"></param>
-        private void SetupRandomizer(IRun run)
-        {
-            run.Clear();
-
-            Image icon = null;
-            icons.TryGetValue("Hyrule Castle", out icon);
-            run.AddSegment("Hyrule Castle", icon: icon);
-
-            run.AddSegment(UNKNOWN);
         }
 
         /// <summary>
@@ -123,7 +127,7 @@ namespace LiveSplit.LinkToThePast
 
         public override void Update(IInvalidator invalidator, LiveSplitState state, float width, float height, LayoutMode mode)
         {
-            gameData.Update(state);
+            gameData.Update(state, IsRandomized(state.Run));
         }
     }
 }
