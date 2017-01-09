@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace LiveSplit.LinkToThePast
+﻿namespace LiveSplit.LinkToThePast
 {
     /// <summary>
     /// Currently active "module"
@@ -22,7 +16,7 @@ namespace LiveSplit.LinkToThePast
         PreOverworld = 0x08,
         Overworld = 0x09,
         PreOverworld2 = 0x0A,
-        Overworld2 = 0x0B,
+        Overworld2 = 0x0B, // e.g. Master Sword grove
         Unknown0 = 0x0C,
         Unknown1 = 0x0D,
         Messaging = 0x0E, // text mode/item screen/map
