@@ -12,6 +12,7 @@ namespace LiveSplit.LinkToThePast
     public class ALTTPComponent : LogicComponent
     {
         public const String TRIFORCE = "Triforce";
+        public const String START = "This seed is the worst.";
 
         private GameData gameData;
         private TimerModel timer;
@@ -50,9 +51,10 @@ namespace LiveSplit.LinkToThePast
                     }
                 }
 
-                // Ganon is the last split after no further splits should be added
-                Log.Info("current split: " + state.CurrentSplit?.Name);
-                if (state.CurrentSplit.Name == TRIFORCE)
+                string oldSplit = state.CurrentSplit?.Name;
+                Log.Info("current split: " + oldSplit);
+
+                if (oldSplit == TRIFORCE || oldSplit == START)
                 {
                     Image icon = null;
                     icons.TryGetValue(e.SplitName, out icon);
@@ -60,7 +62,8 @@ namespace LiveSplit.LinkToThePast
                     state.CurrentSplit.Name = e.SplitName;
                     state.CurrentSplit.Icon = icon;
 
-                    if (e.SplitName != TRIFORCE)
+                    // If our new split is the Triforce room; OR if we're just overwriting the first split, don't add any further splits.
+                    if (e.SplitName != TRIFORCE && oldSplit != START)
                     {
                         // add a new unknown segment
                         run.AddSegment(TRIFORCE, icon: icons[TRIFORCE]);
@@ -88,6 +91,10 @@ namespace LiveSplit.LinkToThePast
             if (gameData.IsRandomized)
             {
                 e.State.Run.Clear();
+
+                // LiveSplit pretends its in Timer-only mode if there is only one segment (Triforce), which means new segments won't be added
+                e.State.Run.AddSegment(START);
+
                 e.State.Run.AddSegment(TRIFORCE, icon: icons[TRIFORCE]);
             }
 
