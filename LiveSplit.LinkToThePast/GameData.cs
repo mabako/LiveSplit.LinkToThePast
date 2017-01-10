@@ -2,8 +2,10 @@
 using LiveSplit.Model;
 using LiveSplit.Options;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Windows.Forms;
 
 namespace LiveSplit.LinkToThePast
 {
@@ -32,6 +34,20 @@ namespace LiveSplit.LinkToThePast
 
         private LiveSplitState currentState;
 
+        /// <summary>
+        /// Base addresses to look up stuff in $7E from.
+        /// </summary>
+        private static Dictionary<String, Dictionary<String, int>> baseAddresses = new Dictionary<String, Dictionary<String, int>>{
+            { "snes9x", new Dictionary<String, int> {
+                { "1.53", 0x2EFBA4 },
+                { "1.54.1", 0x3410D4 }
+            }},
+            { "snes9x-x64", new Dictionary<String, int>{
+                { "1.53", 0x405EC8 },
+                { "1.54.1", 0x4DAF18 },
+            }}
+        };
+
         public void Update(LiveSplitState state, bool randomized)
         {
             currentState = state;
@@ -43,7 +59,7 @@ namespace LiveSplit.LinkToThePast
 
             if (randomized && Module.Current > GameModule.LoadFile)
                 CheckForItems();
-
+            
             // Only check for progress if it changed by one, which is normal story progression.
             // If you load a new game, your progress is 0 (and thus this isn't executed);
             // if you load an existing game, you'll start in state 2 or 3, which also won't lead to this being executed.
@@ -113,7 +129,7 @@ namespace LiveSplit.LinkToThePast
 
         private void CheckPendant(string dungeonName, Pendant p)
         {
-            if((donePendants & p) == 0 && (Pendants.Current & p) == p)
+            if ((donePendants & p) == 0 && (Pendants.Current & p) == p)
             {
                 donePendants = Pendants.Current;
                 Split?.Invoke(this, new SplitEventArgs(currentState, dungeonName));
@@ -122,7 +138,7 @@ namespace LiveSplit.LinkToThePast
 
         private void CheckCrystal(String dungeonName, Crystal c)
         {
-            if((doneCrystals & c) == 0 && (Crystals.Current & c) == c)
+            if ((doneCrystals & c) == 0 && (Crystals.Current & c) == c)
             {
                 doneCrystals = Crystals.Current;
                 Split?.Invoke(this, new SplitEventArgs(currentState, dungeonName));
@@ -135,6 +151,7 @@ namespace LiveSplit.LinkToThePast
             if (SwappableInventory.Changed)
             {
                 // were we just given the fake flute?
+                // NOTE: this doesn't check for the real flute, i.e. when you are able to access the duck, because -finding- the flute is the more important issue.
                 if ((SwappableInventory.Current & Randomizer.InventorySwap.FakeFlute) == Randomizer.InventorySwap.FakeFlute)
                     Split?.Invoke(this, new SplitEventArgs(currentState, "Flute", true));
             }
@@ -166,42 +183,64 @@ namespace LiveSplit.LinkToThePast
         /// <returns>true if any emulator is running</returns>
         private bool FindEmulator()
         {
-            if (Emulator == null || Emulator.HasExited)
+            if (Emulator?.HasExited == true)
+                Emulator = null;
+
+            if (Emulator != null)
+                return true;
+
+            try
             {
-                // try to find snes9x.
-                // the addresses have been tested with snes9x 1.53.
-                int baseAddress = 0;
-                Emulator = Process.GetProcessesByName("snes9x").FirstOrDefault();
-                if (Emulator != null)
+                foreach (var process in baseAddresses)
                 {
-                    baseAddress = 0x2EFBA4;
-                }
-                else
-                {
-                    // Try to find the 64-bit snes9x
-                    Emulator = Process.GetProcessesByName("snes9x-64").FirstOrDefault();
+                    // Try to find any running emulator
+                    Emulator = Process.GetProcessesByName(process.Key).FirstOrDefault();
+                    if (Emulator != null && Emulator.HasExited)
+                        Emulator = null;
+
                     if (Emulator != null)
                     {
-                        baseAddress = 0x405EC8;
+                        // Are we using a supported version?
+                        var version = Emulator.MainModuleWow64Safe().FileVersionInfo;
+                        foreach (var productVersion in process.Value)
+                        {
+                            if (productVersion.Key == version.ProductVersion)
+                            {
+                                // In snes9x source, this is defined in memmap.h
+                                // uint *CMemory.SRAM
+                                int sramBase = productVersion.Value;
+
+                                Module = new MemoryWatcher<GameModule>(new DeepPointer(sramBase, 0x10));
+                                Progress = new MemoryWatcher<GameState>(new DeepPointer(sramBase, 0xF3C5));
+                                Pendants = new MemoryWatcher<Pendant>(new DeepPointer(sramBase, 0xF374));
+                                Crystals = new MemoryWatcher<Crystal>(new DeepPointer(sramBase, 0xF37A));
+
+                                // Randomizer only: Swappable inventory for bottle/flute
+                                SwappableInventory = new MemoryWatcher<Randomizer.InventorySwap>(new DeepPointer(sramBase, 0xF412));
+                                SwappableInventory2 = new MemoryWatcher<Randomizer.InventorySwap2>(new DeepPointer(sramBase, 0xF414));
+
+                                // Items
+                                Hammer = new MemoryWatcher<byte>(new DeepPointer(sramBase, 0xF34B));
+                                Gloves = new MemoryWatcher<byte>(new DeepPointer(sramBase, 0xF354));
+                                Boots = new MemoryWatcher<byte>(new DeepPointer(sramBase, 0xF355));
+
+                                Log.Info("Using " + process.Key + ", " + version);
+                                return true;
+                            }
+                        }
+
+                        MessageBox.Show("Unsupported " + process.Key + " version: " + version.ProductVersion, "LTTP AutoSplitter", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return false;
                     }
                 }
-
-                if (baseAddress > 0)
-                {
-
-                    Module = new MemoryWatcher<GameModule>(new DeepPointer(baseAddress, 0x10));
-                    Progress = new MemoryWatcher<GameState>(new DeepPointer(baseAddress, 0xF3C5));
-                    Pendants = new MemoryWatcher<Pendant>(new DeepPointer(baseAddress, 0xF374));
-                    Crystals = new MemoryWatcher<Crystal>(new DeepPointer(baseAddress, 0xF37A));
-
-                    SwappableInventory = new MemoryWatcher<Randomizer.InventorySwap>(new DeepPointer(baseAddress, 0xF412));
-                    SwappableInventory2 = new MemoryWatcher<Randomizer.InventorySwap2>(new DeepPointer(baseAddress, 0xF414));
-                    Hammer = new MemoryWatcher<byte>(new DeepPointer(baseAddress, 0xF34B));
-                    Gloves = new MemoryWatcher<byte>(new DeepPointer(baseAddress, 0xF354));
-                    Boots = new MemoryWatcher<byte>(new DeepPointer(baseAddress, 0xF355));
-                }
             }
-            return Emulator != null;
+            catch (Exception)
+            {
+                // Make sure there's no error when quitting the process
+                Emulator = null;
+            }
+            // No emulator process running
+            return false;
         }
     }
 
