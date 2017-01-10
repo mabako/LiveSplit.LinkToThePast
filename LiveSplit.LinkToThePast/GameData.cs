@@ -14,6 +14,10 @@ namespace LiveSplit.LinkToThePast
         public event EventHandler<StateEventArgs> OnNewGame;
         public event EventHandler<SplitEventArgs> Split;
 
+        public bool IsRandomized;
+
+        private DeepPointer RomName;
+
         private MemoryWatcher<GameModule> Module;
         private MemoryWatcher<GameState> Progress;
         private MemoryWatcher<Pendant> Pendants;
@@ -35,7 +39,7 @@ namespace LiveSplit.LinkToThePast
         private LiveSplitState currentState;
 
         /// <summary>
-        /// Base addresses to look up stuff in $7E from.
+        /// snes9x RAM addresses (i.e. where game RAM is)
         /// </summary>
         private static Dictionary<String, Dictionary<String, int>> baseAddresses = new Dictionary<String, Dictionary<String, int>>{
             { "snes9x", new Dictionary<String, int> {
@@ -48,16 +52,20 @@ namespace LiveSplit.LinkToThePast
             }}
         };
 
-        public void Update(LiveSplitState state, bool randomized)
+        public void Update(LiveSplitState state)
         {
             currentState = state;
             if (!FindEmulator())
                 return;
 
+            // Make sure we run a matching rom in the emulator
+            if (!IsLegendOfZelda())
+                return;
+
             Progress.Update(Emulator);
             Module.Update(Emulator);
 
-            if (randomized && Module.Current > GameModule.LoadFile)
+            if (IsRandomized && Module.Current > GameModule.LoadFile)
                 CheckForItems();
             
             // Only check for progress if it changed by one, which is normal story progression.
@@ -206,23 +214,28 @@ namespace LiveSplit.LinkToThePast
                         {
                             if (productVersion.Key == version.ProductVersion)
                             {
-                                // In snes9x source, this is defined in memmap.h
-                                // uint *CMemory.SRAM
-                                int sramBase = productVersion.Value;
+                                int pointerSize = process.Key == "snes9x-x64" ? 8 : 4;
 
-                                Module = new MemoryWatcher<GameModule>(new DeepPointer(sramBase, 0x10));
-                                Progress = new MemoryWatcher<GameState>(new DeepPointer(sramBase, 0xF3C5));
-                                Pendants = new MemoryWatcher<Pendant>(new DeepPointer(sramBase, 0xF374));
-                                Crystals = new MemoryWatcher<Crystal>(new DeepPointer(sramBase, 0xF37A));
+                                // In snes9x source, this is defined in memmap.h
+                                // uint *CMemory.RAM
+                                int RAM = productVersion.Value;
+
+                                Module = new MemoryWatcher<GameModule>(new DeepPointer(RAM, 0x10));
+                                Progress = new MemoryWatcher<GameState>(new DeepPointer(RAM, 0xF3C5));
+                                Pendants = new MemoryWatcher<Pendant>(new DeepPointer(RAM, 0xF374));
+                                Crystals = new MemoryWatcher<Crystal>(new DeepPointer(RAM, 0xF37A));
 
                                 // Randomizer only: Swappable inventory for bottle/flute
-                                SwappableInventory = new MemoryWatcher<Randomizer.InventorySwap>(new DeepPointer(sramBase, 0xF412));
-                                SwappableInventory2 = new MemoryWatcher<Randomizer.InventorySwap2>(new DeepPointer(sramBase, 0xF414));
+                                SwappableInventory = new MemoryWatcher<Randomizer.InventorySwap>(new DeepPointer(RAM, 0xF412));
+                                SwappableInventory2 = new MemoryWatcher<Randomizer.InventorySwap2>(new DeepPointer(RAM, 0xF414));
 
                                 // Items
-                                Hammer = new MemoryWatcher<byte>(new DeepPointer(sramBase, 0xF34B));
-                                Gloves = new MemoryWatcher<byte>(new DeepPointer(sramBase, 0xF354));
-                                Boots = new MemoryWatcher<byte>(new DeepPointer(sramBase, 0xF355));
+                                Hammer = new MemoryWatcher<byte>(new DeepPointer(RAM, 0xF34B));
+                                Gloves = new MemoryWatcher<byte>(new DeepPointer(RAM, 0xF354));
+                                Boots = new MemoryWatcher<byte>(new DeepPointer(RAM, 0xF355));
+
+                                // Try reading rom info
+                                RomName = new DeepPointer(RAM + pointerSize, 0x7FC0);
 
                                 Log.Info("Using " + process.Key + ", " + version);
                                 return true;
@@ -240,6 +253,29 @@ namespace LiveSplit.LinkToThePast
                 Emulator = null;
             }
             // No emulator process running
+            return false;
+        }
+
+        private bool IsLegendOfZelda()
+        {
+            if (RomName == null)
+                return false;
+
+            // Try and see what game version we're using
+            string romName;
+            RomName.DerefString(Emulator, 21, out romName);
+            if (romName == "ZELDANODENSETSU      " || romName == "THE LEGEND OF ZELDA  ")
+            {
+                IsRandomized = false;
+                return true;
+            }
+            else if(romName.StartsWith("Z3Rv") || romName.StartsWith("VTC"))
+            {
+                // Z3Rv<version> is Zelda3 Randomizer Version <version>
+                // Not entirely sure what 'VTC' is, but the randomizer runs shared on discord usually are VTC<seed>v<version>
+                IsRandomized = true;
+                return true;
+            }
             return false;
         }
     }

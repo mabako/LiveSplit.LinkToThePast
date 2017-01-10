@@ -34,7 +34,8 @@ namespace LiveSplit.LinkToThePast
             var state = e.State;
             var run = state.Run;
 
-            if (IsRandomized(run))
+            Log.Info("Splitting on " + e.SplitName + " (randomized: " + gameData.IsRandomized + ")");
+            if (gameData.IsRandomized)
             {
                 if (e.Item)
                 {
@@ -50,6 +51,7 @@ namespace LiveSplit.LinkToThePast
                 }
 
                 // Ganon is the last split after no further splits should be added
+                Log.Info("current split: " + state.CurrentSplit?.Name);
                 if (state.CurrentSplit.Name == TRIFORCE)
                 {
                     Image icon = null;
@@ -83,7 +85,7 @@ namespace LiveSplit.LinkToThePast
         /// <param name="e"></param>
         private void OnNewGame(object sender, StateEventArgs e)
         {
-            if (IsRandomized(e.State.Run))
+            if (gameData.IsRandomized)
             {
                 e.State.Run.Clear();
                 e.State.Run.AddSegment(TRIFORCE, icon: icons[TRIFORCE]);
@@ -91,20 +93,6 @@ namespace LiveSplit.LinkToThePast
 
             timer.Reset();
             timer.Start();
-        }
-
-        /// <summary>
-        /// All runs containing 'random' in the category name (random%, randomized, ...) or 'seed' (e.g. seed 12345) will be treated as randomized.
-        /// There's probably a better way to grab that directly from the RAM.
-        /// </summary>
-        /// <param name="run"></param>
-        /// <returns></returns>
-        private bool IsRandomized(IRun run)
-        {
-            if (String.IsNullOrEmpty(run.CategoryName))
-                return false;
-
-            return run.CategoryName.ToLower().Contains("random") || run.CategoryName.ToLower().Contains("seed");
         }
 
         public override void Dispose()
@@ -127,7 +115,7 @@ namespace LiveSplit.LinkToThePast
 
         public override void Update(IInvalidator invalidator, LiveSplitState state, float width, float height, LayoutMode mode)
         {
-            gameData.Update(state, IsRandomized(state.Run));
+            gameData.Update(state);
         }
     }
 }
