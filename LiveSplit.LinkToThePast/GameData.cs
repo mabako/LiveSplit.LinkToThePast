@@ -23,13 +23,33 @@ namespace LiveSplit.LinkToThePast
         private MemoryWatcher<Pendant> Pendants;
         private MemoryWatcher<Crystal> Crystals;
 
-        // Randomizer items
+        #region Randomizer items
         private MemoryWatcher<Randomizer.InventorySwap> SwappableInventory;
         private MemoryWatcher<Randomizer.InventorySwap2> SwappableInventory2;
         private MemoryWatcher<byte> Hammer;
         private MemoryWatcher<byte> Gloves;
         private MemoryWatcher<byte> Boots;
-        // End randomizer items
+        #endregion
+
+        #region Better check for defeated bosses in the Randomizer
+        // Instead of checking which pendants and crystals dropped in
+        private Dictionary<String, byte> bossRoomIds = new Dictionary<string, byte> {
+
+            { "Eastern Palace", 0x8C },
+            {"Desert Palace", 0x33 },
+            {"Tower of Hera", 0x07 },
+
+            {"Palace of Darkness", 0x5A},
+            {"Swamp Palace", 0x02},
+            {"Skull Woods", 0x29},
+            {"Thieves' Town", 0xAC},
+            {"Ice Palace", 0xDE},
+            {"Misery Mire", 0x90},
+            {"Turtle Rock", 0xA4}
+        };
+
+        private Dictionary<String, DeepPointer> bossRoomFlags = new Dictionary<string, DeepPointer>();
+        #endregion
 
         private Process Emulator;
 
@@ -114,7 +134,7 @@ namespace LiveSplit.LinkToThePast
             }
         }
 
-        // TODO this mostly checks for pendants & crystal ownership, not which bosses you've beat
+        #region Checks for finished dungeons (pendants & crystals)
         private void CheckForFinishedDungeon()
         {
             Pendants.Update(Emulator);
@@ -137,21 +157,63 @@ namespace LiveSplit.LinkToThePast
 
         private void CheckPendant(string dungeonName, Pendant p)
         {
-            if ((donePendants & p) == 0 && (Pendants.Current & p) == p)
+            if ((donePendants & p) == p)
+                return;
+
+            if (IsRandomized)
             {
-                donePendants = Pendants.Current;
-                Split?.Invoke(this, new SplitEventArgs(currentState, dungeonName));
+                // This logic might not be entirely correct:
+                //
+                // We know that we emerged victorious from some fight, but have no idea what pendant/crystal it actually was.
+                // However, since pendants and crystals are randomized, this could literally be anything.
+                var pointer = bossRoomFlags[dungeonName];
+                short value = pointer.Deref<short>(Emulator);
+
+                // Is the boss for this room cleared?
+                if ((value & 0x0800) == 0x0800)
+                {
+                    donePendants |= p;
+                    Split?.Invoke(this, new SplitEventArgs(currentState, dungeonName));
+                }
+            }
+            else
+            {
+                if ((Pendants.Current & p) == p)
+                {
+                    donePendants = Pendants.Current;
+                    Split?.Invoke(this, new SplitEventArgs(currentState, dungeonName));
+                }
             }
         }
 
         private void CheckCrystal(String dungeonName, Crystal c)
         {
-            if ((doneCrystals & c) == 0 && (Crystals.Current & c) == c)
+            if ((doneCrystals & c) == c)
+                return;
+
+            if (IsRandomized)
             {
-                doneCrystals = Crystals.Current;
-                Split?.Invoke(this, new SplitEventArgs(currentState, dungeonName));
+                // see the pendant check for why this is done
+                var pointer = bossRoomFlags[dungeonName];
+                short value = pointer.Deref<short>(Emulator);
+
+                // Is the boss for this room cleared?
+                if ((value & 0x0800) == 0x0800)
+                {
+                    doneCrystals |= c;
+                    Split?.Invoke(this, new SplitEventArgs(currentState, dungeonName));
+                }
+            }
+            else
+            {
+                if ((Crystals.Current & c) == c)
+                {
+                    doneCrystals = Crystals.Current;
+                    Split?.Invoke(this, new SplitEventArgs(currentState, dungeonName));
+                }
             }
         }
+        #endregion
 
         private void CheckForItems()
         {
@@ -233,6 +295,9 @@ namespace LiveSplit.LinkToThePast
                                 Hammer = new MemoryWatcher<byte>(new DeepPointer(RAM, 0xF34B));
                                 Gloves = new MemoryWatcher<byte>(new DeepPointer(RAM, 0xF354));
                                 Boots = new MemoryWatcher<byte>(new DeepPointer(RAM, 0xF355));
+
+                                // Room Information
+                                bossRoomFlags = bossRoomIds.ToDictionary(room => room.Key, room => new DeepPointer(RAM, 0xF000 + room.Value * 2));
 
                                 // Try reading rom info
                                 RomName = new DeepPointer(RAM + pointerSize, 0x7FC0);

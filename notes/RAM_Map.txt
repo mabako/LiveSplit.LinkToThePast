@@ -1250,7 +1250,7 @@ $0403[0x01] -   Contains room information, such as whether the boss in this room
     Bit 3: Chest 4
     Bit 4: Chest 5
     Bit 5: Chest 6 / A second Key. Having 2 keys and 6 chests will cause conflicts here.
-    Bit 6: A key has been obtained in this room.
+    Bit 6: A key or pendant/crystal has been obtained in this room
     Bit 7: Heart Piece has been obtained in this room.
 
 $0405[0x01] -   This never seems to be written (free ram?)
