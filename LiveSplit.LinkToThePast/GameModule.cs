@@ -32,6 +32,7 @@
         GanonEmerges = 0x18, // Found Batman
         TriforceRoom = 0x19,
         EndSequence = 0x1A, // credits
-        LocationMenu = 0x1B // select from your house/sanctuary/death mountain
+        LocationMenu = 0x1B, // select from your house/sanctuary/death mountain
+        MAX // any modules beyond this aren't used in-game.
     }
 }

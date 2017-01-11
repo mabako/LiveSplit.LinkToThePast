@@ -85,6 +85,11 @@ namespace LiveSplit.LinkToThePast
             Progress.Update(Emulator);
             Module.Update(Emulator);
 
+            // (snes9x) Resetting the emulator will fill the complete RAM with 0x55.
+            // However, there's no Module with ID 0x55, so we're prior to real initialization.
+            if (Module.Current >= GameModule.MAX)
+                return;
+
             if (IsRandomized && Module.Current > GameModule.LoadFile)
                 CheckForItems();
             
