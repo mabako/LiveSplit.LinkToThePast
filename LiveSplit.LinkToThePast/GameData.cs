@@ -339,10 +339,10 @@ namespace LiveSplit.LinkToThePast
                 IsRandomized = false;
                 return true;
             }
-            else if(romName.StartsWith("Z3Rv") || romName.StartsWith("VTC"))
+            else if(romName.StartsWith("Z3Rv") || romName.StartsWith("VT"))
             {
-                // Z3Rv<version> is Zelda3 Randomizer Version <version>
-                // Not entirely sure what 'VTC' is, but the randomizer runs shared on discord usually are VTC<seed>v<version>
+                // The normal randomizer is Z3Rv<version> <difficulty><seed>
+                // VT are randomized seeds created by Veetorp, VT<difficulty><seed>v<version>
                 IsRandomized = true;
                 return true;
             }
