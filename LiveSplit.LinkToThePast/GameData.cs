@@ -36,16 +36,16 @@ namespace LiveSplit.LinkToThePast
         private Dictionary<String, byte> bossRoomIds = new Dictionary<string, byte> {
 
             { "Eastern Palace", 0x8C },
-            {"Desert Palace", 0x33 },
-            {"Tower of Hera", 0x07 },
+            { "Desert Palace", 0x33 },
+            { "Tower of Hera", 0x07 },
 
-            {"Palace of Darkness", 0x5A},
-            {"Swamp Palace", 0x02},
-            {"Skull Woods", 0x29},
-            {"Thieves' Town", 0xAC},
-            {"Ice Palace", 0xDE},
-            {"Misery Mire", 0x90},
-            {"Turtle Rock", 0xA4}
+            { "Palace of Darkness", 0x5A },
+            { "Swamp Palace", 0x02 },
+            { "Skull Woods", 0x29 },
+            { "Thieves' Town", 0xAC },
+            { "Ice Palace", 0xDE },
+            { "Misery Mire", 0x90 },
+            { "Turtle Rock", 0xA4 }
         };
 
         private Dictionary<String, DeepPointer> bossRoomFlags = new Dictionary<string, DeepPointer>();
