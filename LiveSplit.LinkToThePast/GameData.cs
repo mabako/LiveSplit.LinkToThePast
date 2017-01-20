@@ -35,7 +35,7 @@ namespace LiveSplit.LinkToThePast
         // Instead of checking which pendants and crystals dropped in
         private Dictionary<String, byte> bossRoomIds = new Dictionary<string, byte> {
 
-            { "Eastern Palace", 0x8C },
+            { "Eastern Palace", 0xC8 },
             { "Desert Palace", 0x33 },
             { "Tower of Hera", 0x07 },
 
