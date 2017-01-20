@@ -313,6 +313,7 @@ namespace LiveSplit.LinkToThePast
                         }
 
                         MessageBox.Show("Unsupported " + process.Key + " version: " + version.ProductVersion, "LTTP AutoSplitter", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        Emulator = null;
                         return false;
                     }
                 }
