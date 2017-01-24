@@ -16,6 +16,20 @@ namespace LiveSplit.LinkToThePast
 
         public bool IsRandomized;
 
+        #region PPU / Frame count code
+        private MemoryWatcher<uint> IPPU_TotalEmulatedFrames;
+        private long currentFrames;
+        private long savedFrames; // save some for emulator crashes
+
+        public TimeSpan GameTime
+        {
+            get
+            {
+                return TimeSpan.FromSeconds((savedFrames + currentFrames) / 60f);
+            }
+        }
+        #endregion
+
         private DeepPointer RomName;
 
         private MemoryWatcher<GameModule> Module;
@@ -61,29 +75,52 @@ namespace LiveSplit.LinkToThePast
         /// <summary>
         /// snes9x RAM addresses (i.e. where game RAM is)
         /// </summary>
-        private static Dictionary<String, Dictionary<String, int>> baseAddresses = new Dictionary<String, Dictionary<String, int>>{
-            { "snes9x", new Dictionary<String, int> {
-                { "1.53", 0x2EFBA4 },
-                { "1.54.1", 0x3410D4 }
-            }},
-            { "snes9x-x64", new Dictionary<String, int>{
-                { "1.53", 0x405EC8 },
-                { "1.54.1", 0x4DAF18 },
-            }}
-        };
+        private static Dictionary<String, List<EmulatorOffsets>> offsets = new List<EmulatorOffsets>
+        {
+            new Snes9xOffsets { Process = "snes9x", Version = "1.53", RAM = 0x2EFBA4, TotalEmulatedFrames = 0x2FAD20 },
+            new Snes9xOffsets { Process = "snes9x", Version = "1.54.1", RAM = 0x3410D4, TotalEmulatedFrames = 0x341008 },
+            new Snes9xOffsets { Process = "snes9x-x64", Version = "1.53", RAM = 0x405EC8, TotalEmulatedFrames = 0x4190E8 },
+            new Snes9xOffsets { Process = "snes9x-x64", Version  ="1.54.1", RAM = 0x4DAF18, TotalEmulatedFrames = 0x4D7A28 },
+        }.GroupBy(x => x.Process).ToDictionary(x => x.Key, x => x.ToList());
 
         public void Update(LiveSplitState state)
         {
             currentState = state;
-            if (!FindEmulator())
-                return;
+            if (!FindEmulator() || !IsLegendOfZelda())
+            {
+                savedFrames += currentFrames;
+                currentFrames = 0;
 
-            // Make sure we run a matching rom in the emulator
-            if (!IsLegendOfZelda())
                 return;
+            }
 
             Progress.Update(Emulator);
             Module.Update(Emulator);
+            
+            // Try to calculate the game time in terms of emulated frames
+            if (IPPU_TotalEmulatedFrames != null)
+            {
+                IPPU_TotalEmulatedFrames.Update(Emulator);
+                uint frames = IPPU_TotalEmulatedFrames.Current;
+
+                if (Module.Old < GameModule.MAX && Module.Current >= GameModule.MAX)
+                {
+                    // just hit reset, so save the current frames
+                    savedFrames += currentFrames;
+                    currentFrames = 0;
+                }
+                else if (Module.Old >= GameModule.MAX && Module.Current < GameModule.MAX)
+                {
+                    // LTTP is playing again, the first (few?) frames of initialization aren't relevant to the time
+                    savedFrames -= frames;
+                    currentFrames = frames;
+                }
+                else if (Module.Current < GameModule.MAX)
+                {
+                    currentFrames = frames;
+                }
+            }
+
 
             // (snes9x) Resetting the emulator will fill the complete RAM with 0x55.
             // However, there's no Module with ID 0x55, so we're prior to real initialization.
@@ -109,6 +146,10 @@ namespace LiveSplit.LinkToThePast
                     {
                         donePendants = 0;
                         doneCrystals = 0;
+
+                        // Make sure we're not counting our passed frames so far as elapsed time
+                        savedFrames = -currentFrames;
+
                         OnNewGame?.Invoke(this, new StateEventArgs(state));
                     }
                 }
@@ -266,7 +307,7 @@ namespace LiveSplit.LinkToThePast
 
             try
             {
-                foreach (var process in baseAddresses)
+                foreach (var process in offsets)
                 {
                     // Try to find any running emulator
                     Emulator = Process.GetProcessesByName(process.Key).FirstOrDefault();
@@ -277,15 +318,15 @@ namespace LiveSplit.LinkToThePast
                     {
                         // Are we using a supported version?
                         var version = Emulator.MainModuleWow64Safe().FileVersionInfo;
-                        foreach (var productVersion in process.Value)
+                        foreach (var emulatorOffsets in process.Value)
                         {
-                            if (productVersion.Key == version.ProductVersion)
+                            if (emulatorOffsets.Version == version.ProductVersion)
                             {
                                 int pointerSize = process.Key == "snes9x-x64" ? 8 : 4;
 
                                 // In snes9x source, this is defined in memmap.h
                                 // uint *CMemory.RAM
-                                int RAM = productVersion.Value;
+                                int RAM = emulatorOffsets.RAM;
 
                                 Module = new MemoryWatcher<GameModule>(new DeepPointer(RAM, 0x10));
                                 Progress = new MemoryWatcher<GameState>(new DeepPointer(RAM, 0xF3C5));
@@ -306,6 +347,9 @@ namespace LiveSplit.LinkToThePast
 
                                 // Try reading rom info
                                 RomName = new DeepPointer(RAM + pointerSize, 0x7FC0);
+
+                                // PPU info
+                                IPPU_TotalEmulatedFrames = new MemoryWatcher<uint>(new DeepPointer(emulatorOffsets.TotalEmulatedFrames));
 
                                 Log.Info("Using " + process.Key + ", " + version);
                                 return true;

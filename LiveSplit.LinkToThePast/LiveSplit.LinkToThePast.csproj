@@ -50,6 +50,7 @@
   <ItemGroup>
     <Compile Include="ALTTPComponent.cs" />
     <Compile Include="Crystal.cs" />
+    <Compile Include="EmulatorOffsets.cs" />
     <Compile Include="GameData.cs" />
     <Compile Include="Factory.cs" />
     <Compile Include="GameModule.cs" />

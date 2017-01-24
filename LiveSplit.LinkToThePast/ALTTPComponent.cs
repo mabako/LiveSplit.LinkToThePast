@@ -100,6 +100,8 @@ namespace LiveSplit.LinkToThePast
 
             timer.Reset();
             timer.Start();
+
+            e.State.IsGameTimePaused = true;
         }
 
         public override void Dispose()
@@ -123,6 +125,11 @@ namespace LiveSplit.LinkToThePast
         public override void Update(IInvalidator invalidator, LiveSplitState state, float width, float height, LayoutMode mode)
         {
             gameData.Update(state);
+
+            if (state.IsGameTimeInitialized)
+                timer.InitializeGameTime();
+            if (state.CurrentPhase == TimerPhase.Running)
+                state.SetGameTime(gameData.GameTime);
         }
     }
 }
